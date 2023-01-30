@@ -1,5 +1,5 @@
 use std::{
-    io::{ErrorKind, Read, Write},
+    io::{Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
     os::fd::AsRawFd,
     sync::{Arc, Mutex},
@@ -62,7 +62,6 @@ fn handle_stream(stream: TcpStream) {
                         println!("peer disconnected: {:?}", peer_addr);
                         connected = false;
                     }
-                    Err(err) if err.kind() == ErrorKind::WouldBlock => {}
                     Err(err) => {
                         eprintln!("socket read error: {:?}", err);
                         connected = false;
