@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 threadpool = "1.8.1"
 nix = "0.26.2"
+dotenv = "0.15.0"

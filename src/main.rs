@@ -14,8 +14,17 @@ const PACKET_TYPE_REGISTER: &[u8] = "aabb".as_bytes();
 const PACKET_TYPE_KEEPALIVE: &[u8] = "keal".as_bytes();
 
 fn main() {
+    dotenv::dotenv().unwrap();
+
     let listener = TcpListener::bind("0.0.0.0:7878").unwrap();
-    let pool = ThreadPool::new(32);
+    let pool = ThreadPool::new(
+        dotenv::var("MAX_PEER")
+            .unwrap_or(String::from("16"))
+            .parse::<usize>()
+            .unwrap(),
+    );
+
+    println!("Maximum peer count: {}", pool.max_count());
 
     for stream in listener.incoming() {
         match stream {
