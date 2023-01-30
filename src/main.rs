@@ -10,8 +10,10 @@ use threadpool::ThreadPool;
 
 const PACKET_SIZE: usize = 128;
 const HEADER_SIZE: usize = 4;
-const PACKET_TYPE_REGISTER: &[u8] = "aabb".as_bytes();
-const PACKET_TYPE_KEEPALIVE: &[u8] = "keal".as_bytes();
+const PACKET_TYPE_REGISTER: &[u8] = "....".as_bytes();
+const PACKET_TYPE_KEEPALIVE: &[u8] = "..!!".as_bytes();
+const EPOLL_EVENT_COUNT: usize = 1_024;
+const EPOLL_TIMEOUT: isize = 1_000;
 
 fn main() {
     dotenv::dotenv().unwrap();
@@ -58,8 +60,8 @@ fn handle_stream(stream: TcpStream) {
     while connected {
         match epoll_wait(
             epoll_fd,
-            &mut [EpollEvent::new(EpollFlags::EPOLLIN, 0); 1024],
-            1_000,
+            &mut [EpollEvent::new(EpollFlags::EPOLLIN, 0); EPOLL_EVENT_COUNT],
+            EPOLL_TIMEOUT,
         ) {
             Ok(size) if size > 0 => {
                 let mut buf = [0; PACKET_SIZE];
