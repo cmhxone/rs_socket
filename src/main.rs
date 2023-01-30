@@ -95,6 +95,7 @@ fn handle_buffer(buf: &[u8]) {
             // println!("buf_body: {:?}", buf_body);
         }
         _ => {
+            println!("Some packet received");
             // println!("buf_head: {:?}", buf_head);
             // println!("buf_body: {:?}", buf_body);
         }
