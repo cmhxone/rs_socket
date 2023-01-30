@@ -1,14 +1,17 @@
 use std::{
-    io::Read,
+    io::{ErrorKind, Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
+    os::fd::AsRawFd,
     sync::{Arc, Mutex},
 };
 
+use nix::sys::epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp};
 use threadpool::ThreadPool;
 
 const PACKET_SIZE: usize = 128;
 const HEADER_SIZE: usize = 4;
 const PACKET_TYPE_REGISTER: &[u8] = "aabb".as_bytes();
+const PACKET_TYPE_KEEPALIVE: &[u8] = "keal".as_bytes();
 
 fn main() {
     let listener = TcpListener::bind("0.0.0.0:7878").unwrap();
@@ -20,7 +23,7 @@ fn main() {
                 pool.execute(|| handle_stream(stream));
             }
             Err(err) => {
-                println!("error: {:?}", err);
+                eprintln!("socket incoming error: {:?}", err);
             }
         }
     }
@@ -31,33 +34,57 @@ fn main() {
 ///
 fn handle_stream(stream: TcpStream) {
     let stream = Arc::new(Mutex::new(stream));
-    stream.lock().unwrap().set_nonblocking(false).unwrap();
+    stream.lock().unwrap().set_nonblocking(true).unwrap();
 
     let peer_addr = stream.lock().unwrap().peer_addr().unwrap();
     println!("peer connected: {:?}", peer_addr);
 
+    let sock_fd = stream.lock().unwrap().as_raw_fd();
+    let epoll_fd = epoll_create().unwrap();
+    let mut epoll_event = EpollEvent::new(EpollFlags::EPOLLIN, sock_fd as u64);
+
+    epoll_ctl(epoll_fd, EpollOp::EpollCtlAdd, sock_fd, &mut epoll_event).unwrap();
+
     let mut connected = true;
     while connected {
-        let mut buf = [0; PACKET_SIZE];
-        match stream.lock().unwrap().read(&mut buf) {
+        match epoll_wait(
+            epoll_fd,
+            &mut [EpollEvent::new(EpollFlags::EPOLLIN, 0); 1024],
+            1_000,
+        ) {
             Ok(size) if size > 0 => {
-                handle_buffer(&buf);
+                let mut buf = [0; PACKET_SIZE];
+                match stream.lock().unwrap().read(&mut buf) {
+                    Ok(size) if size > 0 => {
+                        handle_buffer(&buf);
+                    }
+                    Ok(_) => {
+                        println!("peer disconnected: {:?}", peer_addr);
+                        connected = false;
+                    }
+                    Err(err) if err.kind() == ErrorKind::WouldBlock => {}
+                    Err(err) => {
+                        eprintln!("socket read error: {:?}", err);
+                        connected = false;
+                    }
+                };
             }
             Ok(_) => {
-                println!("peer disconnected: {:?}", peer_addr);
-                connected = false;
+                stream.lock().unwrap().write(PACKET_TYPE_KEEPALIVE).unwrap();
+                stream.lock().unwrap().flush().unwrap();
             }
             Err(err) => {
-                println!("error: {:?}", err);
-                connected = false;
+                eprintln!("epoll error: {:?}", err);
             }
-        };
+        }
     }
 
     stream.lock().unwrap().shutdown(Shutdown::Both).unwrap();
 }
 
-// TCP 버퍼 핸들러
+///
+/// TCP 버퍼 핸들러
+///
 fn handle_buffer(buf: &[u8]) {
     let buf_head = &buf[0..HEADER_SIZE];
     let _buf_body = &buf[HEADER_SIZE..];
