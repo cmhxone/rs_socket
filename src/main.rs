@@ -1,11 +1,10 @@
 use std::{
-    io::Read,
     net::{Shutdown, TcpListener, TcpStream},
     os::fd::AsRawFd,
     sync::{Arc, Mutex},
 };
 
-use nix::sys::epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp};
+use nix::{sys::epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp}, unistd::{write, read}};
 use threadpool::ThreadPool;
 
 /// 패킷 사이즈
@@ -80,18 +79,15 @@ fn handle_stream(stream: TcpStream) {
 
     let mut connected = true;
     while connected {
-        match epoll_wait(
-            epoll_fd,
-            &mut [EpollEvent::new(EpollFlags::EPOLLIN, 0); EPOLL_EVENT_COUNT],
-            epoll_timeout,
-        ) {
+        let mut events = [EpollEvent::new(EpollFlags::empty(), 0); EPOLL_EVENT_COUNT];
+        match epoll_wait(epoll_fd, &mut events, epoll_timeout) {
             Ok(size) if size > 0 => {
                 // epoll 파일디스크립터 사이즈 변경 확인
                 let mut buf = [0; PACKET_SIZE];
-                match stream.lock().unwrap().read(&mut buf) {
+                match read(sock_fd, &mut buf) {
                     Ok(size) if size > 0 => {
                         // 패킷 수신
-                        handle_buffer(&buf);
+                        handle_buffer(sock_fd, &buf);
                     }
                     Ok(_) => {
                         // 패킷 0Byte 수신(연결종료)
@@ -105,11 +101,7 @@ fn handle_stream(stream: TcpStream) {
                     }
                 };
             }
-            Ok(_) => {
-                // epoll 타임아웃 발생 시, 커넥션 종료
-                println!("peer disconnected: {:?}, epoll timeout occured", peer_addr);
-                connected = false;
-            }
+            Ok(_) => {}
             Err(err) => {
                 // epoll 오류
                 eprintln!("epoll error: {:?}", err);
@@ -119,18 +111,20 @@ fn handle_stream(stream: TcpStream) {
 
     // TCP Stream 종료
     stream.lock().unwrap().shutdown(Shutdown::Both).unwrap();
+    epoll_ctl(epoll_fd, EpollOp::EpollCtlDel, sock_fd, &mut epoll_event).unwrap();
 }
 
 ///
 /// TCP 버퍼 핸들러
 ///
-fn handle_buffer(buf: &[u8]) {
+fn handle_buffer(sock_fd: i32, buf: &[u8]) {
     let buf_head = &buf[0..HEADER_SIZE]; // 패킷 헤더
     let _buf_body = &buf[HEADER_SIZE..]; // 패킷 본문
 
     match buf_head {
         PACKET_TYPE_REGISTER => {
             println!("Matched here");
+            write(sock_fd, _buf_body).unwrap();
             // println!("buf_body: {:?}", buf_body);
         }
         _ => {
