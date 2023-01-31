@@ -1,5 +1,5 @@
 use std::{
-    io::{Read, Write},
+    io::Read,
     net::{Shutdown, TcpListener, TcpStream},
     os::fd::AsRawFd,
     sync::{Arc, Mutex},
@@ -15,13 +15,9 @@ const HEADER_SIZE: usize = 4;
 
 /// 패킷 헤더유형(등록)
 const PACKET_TYPE_REGISTER: &[u8] = "....".as_bytes();
-/// 패킷 헤더유형(Keep-Alive)
-const PACKET_TYPE_KEEPALIVE: &[u8] = "..!!".as_bytes();
 
 /// epoll 이벤트 크기
 const EPOLL_EVENT_COUNT: usize = 1_024;
-/// epoll 타임아웃
-const EPOLL_TIMEOUT: isize = 1_000;
 
 fn main() {
     dotenv::dotenv().unwrap();
@@ -37,6 +33,14 @@ fn main() {
 
     // 스레드 풀 수(최대 클라이언트 접속 수)
     println!("Maximum peer count: {}", pool.max_count());
+    // Epoll 아이들 타임아웃
+    println!(
+        "Epoll timeout: {}",
+        dotenv::var("EPOLL_IDLE_TIMEOUT")
+            .unwrap()
+            .parse::<isize>()
+            .unwrap_or(10_000)
+    );
 
     // TCP accept 발생 시, 스레드풀로 전달
     for stream in listener.incoming() {
@@ -69,12 +73,17 @@ fn handle_stream(stream: TcpStream) {
 
     epoll_ctl(epoll_fd, EpollOp::EpollCtlAdd, sock_fd, &mut epoll_event).unwrap();
 
+    let epoll_timeout = dotenv::var("EPOLL_IDLE_TIMEOUT")
+        .unwrap()
+        .parse::<isize>()
+        .unwrap_or(10_000);
+
     let mut connected = true;
     while connected {
         match epoll_wait(
             epoll_fd,
             &mut [EpollEvent::new(EpollFlags::EPOLLIN, 0); EPOLL_EVENT_COUNT],
-            EPOLL_TIMEOUT,
+            epoll_timeout,
         ) {
             Ok(size) if size > 0 => {
                 // epoll 파일디스크립터 사이즈 변경 확인
@@ -97,9 +106,9 @@ fn handle_stream(stream: TcpStream) {
                 };
             }
             Ok(_) => {
-                // epoll 타임아웃 발생 시, Keep-Alive 패킷 송신
-                stream.lock().unwrap().write(PACKET_TYPE_KEEPALIVE).unwrap();
-                stream.lock().unwrap().flush().unwrap();
+                // epoll 타임아웃 발생 시, 커넥션 종료
+                println!("peer disconnected: {:?}, epoll timeout occured", peer_addr);
+                connected = false;
             }
             Err(err) => {
                 // epoll 오류
