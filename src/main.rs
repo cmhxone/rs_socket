@@ -4,7 +4,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use nix::{sys::epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp}, unistd::{write, read}};
+use nix::{
+    sys::epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp},
+    unistd::{read, write},
+};
 use threadpool::ThreadPool;
 
 /// 패킷 사이즈
@@ -24,7 +27,7 @@ fn main() {
     // TCP 소켓, 스레드풀 생성
     let listener = TcpListener::bind("0.0.0.0:7878").unwrap();
     let pool = ThreadPool::new(
-        dotenv::var("MAX_PEER")
+        dotenv::var("MAX_THREAD_POOL")
             .unwrap_or(String::from("16"))
             .parse::<usize>()
             .unwrap(),
@@ -123,14 +126,15 @@ fn handle_buffer(sock_fd: i32, buf: &[u8]) {
 
     match buf_head {
         PACKET_TYPE_REGISTER => {
-            println!("Matched here");
-            write(sock_fd, _buf_body).unwrap();
-            // println!("buf_body: {:?}", buf_body);
+            println!("registering {}", String::from_utf8_lossy(_buf_body).trim());
+            write(
+                sock_fd,
+                format!("Hello {}", String::from_utf8_lossy(_buf_body).trim()).as_bytes(),
+            )
+            .unwrap();
         }
         _ => {
-            println!("Some packet received");
-            // println!("buf_head: {:?}", buf_head);
-            // println!("buf_body: {:?}", buf_body);
+            println!("undefined packet received, {:?}", buf_head);
         }
     }
 }
