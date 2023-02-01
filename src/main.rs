@@ -77,12 +77,14 @@ fn main() {
                             // 네이글(Nagle) 알고리즘 소켓 설정 활성화
                             setsockopt(stream_fd, sockopt::TcpNoDelay, &true).unwrap();
 
-                            println!(
-                                "connect from peer {}",
-                                getpeername::<SockaddrIn>(stream_fd as RawFd)
-                                    .unwrap()
-                                    .to_string()
-                            );
+                            match getpeername::<SockaddrIn>(stream_fd as RawFd) {
+                                Ok(addr) => {
+                                    println!("connect from peer {}", addr.to_string());
+                                }
+                                Err(error) => {
+                                    eprintln!("epoll bind loop(): {:?}", error);
+                                }
+                            }
 
                             // TCP 스트림 핸들러 연동 스레드 호출
                             thread::spawn(move || handle_stream(epfd, stream_fd));
