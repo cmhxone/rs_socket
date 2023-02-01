@@ -7,7 +7,7 @@ use std::{
 use nix::{
     sys::{
         epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp},
-        socket::{accept, getpeername, SockaddrIn},
+        socket::{accept, getpeername, SockaddrIn, setsockopt, sockopt},
     },
     unistd::{close, read},
 };
@@ -47,7 +47,7 @@ fn main() {
     let ip = dotenv::var("IP_ADDR").unwrap();
     let port = dotenv::var("PORT").unwrap();
     let listener = TcpListener::bind(format!("{}:{}", ip, port)).unwrap();
-    listener.set_nonblocking(true).unwrap();
+    listener.set_nonblocking(true).unwrap();    // 논블로킹 소켓 설정 활성화
 
     // TCP 소켓 핸들링 Epoll 파일 디스크립터 생성(UNIX)
     let epfd = epoll_create().unwrap();
@@ -73,6 +73,10 @@ fn main() {
                             let idx = rand::random::<usize>() % pool.max_count();
                             let epfd = epfds.clone().get(idx).unwrap().clone();
                             let stream_fd = accept(sockfd).unwrap();
+
+                            // 네이글(Nagle) 알고리즘 소켓 설정 활성화
+                            setsockopt(stream_fd, sockopt::TcpNoDelay, &true).unwrap();
+
                             println!(
                                 "connect from peer {}",
                                 getpeername::<SockaddrIn>(stream_fd as RawFd)
