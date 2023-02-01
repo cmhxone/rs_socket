@@ -14,6 +14,14 @@ use nix::{
 
 use threadpool::ThreadPool;
 
+/// 패킷 길이
+const PACKET_LENGTH: usize = 128;
+
+// Epoll 소켓 바인더 처리 이벤트 수
+const EPOLL_BINDER_EVENT_COUNT: usize = 1_024;
+// Epoll 소켓 핸들러 처리 이벤트 수
+const EPOLL_HANDLER_EVENT_COUNT: usize = 1_024;
+
 ///
 /// 소켓 서버 메인
 ///
@@ -50,9 +58,13 @@ fn main() {
     epoll_ctl(epfd, EpollOp::EpollCtlAdd, sockfd, &mut event).unwrap();
 
     // TCP 소켓 리스너 Epoll 루프 동작(UNIX)
-    let mut events = [EpollEvent::empty(); 1];
+    let mut events = [EpollEvent::empty(); EPOLL_BINDER_EVENT_COUNT];
+    let epoll_binder_timeout = dotenv::var("EPOLL_BINDER_TIMEOUT")
+        .unwrap()
+        .parse::<isize>()
+        .unwrap_or(1_000);
     loop {
-        match epoll_wait(epfd, &mut events, 1_000) {
+        match epoll_wait(epfd, &mut events, epoll_binder_timeout) {
             Ok(size) => {
                 for i in 0..size {
                     match (events[i].data(), events[i].events()) {
@@ -97,15 +109,19 @@ fn handle_stream(_epfd: RawFd, _sockfd: RawFd) -> () {
 /// Epoll 루프 핸들러
 ///
 fn handle_epoll(_epfd: RawFd) -> () {
-    let mut events = [EpollEvent::empty(); 2];
+    let mut events = [EpollEvent::empty(); EPOLL_HANDLER_EVENT_COUNT];
+    let epoll_handler_timeout = dotenv::var("EPOLL_HANDLER_TIMEOUT")
+        .unwrap()
+        .parse::<isize>()
+        .unwrap_or(100);
     loop {
-        match epoll_wait(_epfd, &mut events, 100) {
+        match epoll_wait(_epfd, &mut events, epoll_handler_timeout) {
             Ok(size) => {
                 for _i in 0..size {
                     match (events[_i].data(), events[_i].events()) {
                         (_fd, _ev) if _ev == EpollFlags::EPOLLIN => {
                             // 패킷 입력 처리
-                            let mut buf = [0; 128];
+                            let mut buf = [0; PACKET_LENGTH];
                             match read(_fd as RawFd, &mut buf) {
                                 Ok(size) if size > 0 => {
                                     println!(
