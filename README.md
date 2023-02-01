@@ -1,3 +1,2 @@
 # rs_socket
-
-non-blocking epoll socket server
+multithreaded non-blocking socket server for UNIX OS(epoll)
