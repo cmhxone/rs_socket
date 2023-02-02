@@ -4,6 +4,7 @@ use std::{
     thread,
 };
 
+use lazy_static::lazy_static;
 use nix::{
     sys::{
         epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp},
@@ -16,13 +17,30 @@ use threadpool::ThreadPool;
 
 use rs_socket::socket::get_peer_name;
 
-/// 패킷 길이
-const PACKET_LENGTH: usize = 128;
+lazy_static! {
+    /// 스레드 풀 최대 스레드 수
+    static ref POOL_SIZE: usize = dotenv::var("MAX_THREAD_POOL")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap_or(4);
 
-/// Epoll 소켓 바인더 처리 이벤트 수
-const EPOLL_BINDER_EVENT_COUNT: usize = 1_024;
-/// Epoll 소켓 핸들러 처리 이벤트 수
-const EPOLL_HANDLER_EVENT_COUNT: usize = 1_024;
+    /// 패킷 버퍼 길이
+    static ref PACKET_LENGTH: usize = dotenv::var("PACKET_LENGTH")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap_or(1_024);
+
+    /// 소켓 바인딩 Epoll 파일 디스크립터 이벤트 처리 수
+    static ref EPOLL_BINDER_EVENT_COUNT: usize = dotenv::var("EPOLL_BINDER_EVENT_COUNT")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap_or(1_024);
+    /// 소켓 핸들링 Epoll 파일 디스크립터 이벤트 처리 수
+    static ref EPOLL_HANDLER_EVENT_COUNT: usize = dotenv::var("EPOLL_HANDLER_EVENT_COUNT")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap_or(1_024);
+}
 
 ///
 /// 소켓 서버 메인
@@ -30,12 +48,7 @@ const EPOLL_HANDLER_EVENT_COUNT: usize = 1_024;
 fn main() {
     dotenv::dotenv().unwrap();
 
-    // 풀 사이즈 설정파일에서 바인딩
-    let pool_size = dotenv::var("MAX_THREAD_POOL")
-        .unwrap()
-        .parse::<usize>()
-        .unwrap_or(4);
-    let pool = ThreadPool::new(pool_size);
+    let pool = ThreadPool::new(*POOL_SIZE);
 
     // 커넥션 분산제어용 Epoll 벡터 생성
     let mut epfds = Vec::new();
@@ -60,7 +73,7 @@ fn main() {
     epoll_ctl(epfd, EpollOp::EpollCtlAdd, sockfd, &mut event).unwrap();
 
     // TCP 소켓 리스너 Epoll 루프 동작(UNIX)
-    let mut events = [EpollEvent::empty(); EPOLL_BINDER_EVENT_COUNT];
+    let mut events = vec![EpollEvent::empty(); *EPOLL_BINDER_EVENT_COUNT];
     let epoll_binder_timeout = dotenv::var("EPOLL_BINDER_TIMEOUT")
         .unwrap()
         .parse::<isize>()
@@ -115,7 +128,7 @@ fn bind_socket(_epfd: RawFd, _sockfd: RawFd) -> () {
 /// Epoll 루프 핸들러
 ///
 fn handle_epoll(epfd: RawFd) -> () {
-    let mut events = [EpollEvent::empty(); EPOLL_HANDLER_EVENT_COUNT];
+    let mut events = vec![EpollEvent::empty(); *EPOLL_HANDLER_EVENT_COUNT];
     let epoll_handler_timeout = dotenv::var("EPOLL_HANDLER_TIMEOUT")
         .unwrap()
         .parse::<isize>()
@@ -127,7 +140,7 @@ fn handle_epoll(epfd: RawFd) -> () {
                     match (events[i].data(), events[i].events()) {
                         (fd, ev) if ev == EpollFlags::EPOLLIN => {
                             // 패킷 입력 처리
-                            let mut buf = [0; PACKET_LENGTH];
+                            let mut buf = vec![0; *PACKET_LENGTH];
                             match read(fd as RawFd, &mut buf) {
                                 Ok(size) if size > 0 => {
                                     println!(
