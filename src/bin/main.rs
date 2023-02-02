@@ -5,7 +5,7 @@ use std::{
 };
 
 use lazy_static::lazy_static;
-use log::{info, warn, error};
+use log::{error, info, warn};
 use nix::{
     libc::linger,
     sys::{
@@ -20,7 +20,7 @@ use nix::{
 
 use threadpool::ThreadPool;
 
-use rs_socket::socket::get_peer_name;
+use rs_socket::socket::{epoll_monitor_event, get_peer_name};
 
 lazy_static! {
     /// 스레드 풀 최대 스레드 수
@@ -91,7 +91,7 @@ fn main() {
     // TCP 소켓 핸들링 Epoll 파일 디스크립터 생성(UNIX)
     let epfd = epoll_create().unwrap();
     let sockfd = listener.as_raw_fd();
-    let mut event = EpollEvent::new(EpollFlags::EPOLLET | EpollFlags::EPOLLIN, sockfd as u64);
+    let mut event = EpollEvent::new(epoll_monitor_event(), sockfd as u64);
 
     // TCP 소켓 리스너 Epoll 관심목록 등록(UNIX)
     epoll_ctl(epfd, EpollOp::EpollCtlAdd, sockfd, &mut event).unwrap();
@@ -137,10 +137,7 @@ fn main() {
 /// TCP 스트림 Epoll 파일 디스크립터 관심 목록 등록 핸들러
 ///
 fn bind_socket(epfd: RawFd, sockfd: RawFd) -> () {
-    let mut event = EpollEvent::new(
-        EpollFlags::EPOLLIN | EpollFlags::EPOLLET | EpollFlags::EPOLLRDHUP,
-        sockfd as u64,
-    );
+    let mut event = EpollEvent::new(epoll_monitor_event(), sockfd as u64);
     epoll_ctl(epfd, EpollOp::EpollCtlAdd, sockfd.as_raw_fd(), &mut event).unwrap();
 }
 
@@ -178,19 +175,13 @@ fn handle_epoll(epfd: RawFd) -> () {
                         (fd, ev) if ev == EpollFlags::EPOLLRDHUP | EpollFlags::EPOLLIN => {
                             // 접속 해제 처리
                             info!("disconnected from peer {:?}", get_peer_name(fd as RawFd));
-                            let mut event = EpollEvent::new(
-                                EpollFlags::EPOLLET | EpollFlags::EPOLLIN | EpollFlags::EPOLLRDHUP,
-                                fd,
-                            );
+                            let mut event = EpollEvent::new(epoll_monitor_event(), fd);
                             epoll_ctl(epfd, EpollOp::EpollCtlDel, fd as RawFd, &mut event).unwrap();
                             close(fd as RawFd).unwrap();
                         }
                         (fd, ev) => {
                             info!("epoll_handler(): {:?}", ev);
-                            let mut event = EpollEvent::new(
-                                EpollFlags::EPOLLET | EpollFlags::EPOLLIN | EpollFlags::EPOLLRDHUP,
-                                fd,
-                            );
+                            let mut event = EpollEvent::new(epoll_monitor_event(), fd);
                             epoll_ctl(epfd, EpollOp::EpollCtlDel, fd as RawFd, &mut event).unwrap();
                             close(fd as RawFd).unwrap();
                         }
