@@ -7,12 +7,14 @@ use std::{
 use nix::{
     sys::{
         epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp},
-        socket::{accept, getpeername, setsockopt, sockopt, SockaddrIn},
+        socket::{accept, setsockopt, sockopt},
     },
     unistd::{close, read},
 };
 
 use threadpool::ThreadPool;
+
+use rs_socket::socket::get_peer_name;
 
 /// 패킷 길이
 const PACKET_LENGTH: usize = 128;
@@ -171,15 +173,5 @@ fn handle_epoll(epfd: RawFd) -> () {
                 eprintln!("handle_epoll wait error: {:?}", error);
             }
         }
-    }
-}
-
-///
-/// 소켓 파일디스크립터의 peer 정보를 반환
-///
-fn get_peer_name(sockfd: RawFd) -> String {
-    match getpeername::<SockaddrIn>(sockfd) {
-        Ok(addr) => addr.to_string(),
-        Err(_) => String::from("Unknown"),
     }
 }
