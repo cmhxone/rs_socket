@@ -7,7 +7,7 @@ use std::{
 use nix::{
     sys::{
         epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp},
-        socket::{accept, getpeername, SockaddrIn, setsockopt, sockopt},
+        socket::{accept, getpeername, setsockopt, sockopt, SockaddrIn},
     },
     unistd::{close, read},
 };
@@ -17,9 +17,9 @@ use threadpool::ThreadPool;
 /// 패킷 길이
 const PACKET_LENGTH: usize = 128;
 
-// Epoll 소켓 바인더 처리 이벤트 수
+/// Epoll 소켓 바인더 처리 이벤트 수
 const EPOLL_BINDER_EVENT_COUNT: usize = 1_024;
-// Epoll 소켓 핸들러 처리 이벤트 수
+/// Epoll 소켓 핸들러 처리 이벤트 수
 const EPOLL_HANDLER_EVENT_COUNT: usize = 1_024;
 
 ///
@@ -47,7 +47,7 @@ fn main() {
     let ip = dotenv::var("IP_ADDR").unwrap();
     let port = dotenv::var("PORT").unwrap();
     let listener = TcpListener::bind(format!("{}:{}", ip, port)).unwrap();
-    listener.set_nonblocking(true).unwrap();    // 논블로킹 소켓 설정 활성화
+    listener.set_nonblocking(true).unwrap(); // 논블로킹 소켓 설정 활성화
 
     // TCP 소켓 핸들링 Epoll 파일 디스크립터 생성(UNIX)
     let epfd = epoll_create().unwrap();
@@ -72,22 +72,21 @@ fn main() {
                             // 랜덤한 Epoll 파일디스크립터에 추가
                             let idx = rand::random::<usize>() % pool.max_count();
                             let epfd = epfds.clone().get(idx).unwrap().clone();
-                            let stream_fd = accept(sockfd).unwrap();
+                            let connfd = accept(sockfd).unwrap();
 
                             // 네이글(Nagle) 알고리즘 소켓 설정 활성화
-                            setsockopt(stream_fd, sockopt::TcpNoDelay, &true).unwrap();
+                            setsockopt(connfd, sockopt::TcpNoDelay, &true).unwrap();
 
-                            match getpeername::<SockaddrIn>(stream_fd as RawFd) {
-                                Ok(addr) => {
-                                    println!("connect from peer {}", addr.to_string());
-                                }
-                                Err(error) => {
-                                    eprintln!("epoll bind loop(): {:?}", error);
-                                }
-                            }
+                            // TCP Keep-alive 소켓 설정 활성화
+                            let keep_alive = true;
+                            setsockopt(connfd, sockopt::KeepAlive, &keep_alive).unwrap();
+
+                            let keep_idle = 10;
+                            setsockopt(connfd, sockopt::TcpKeepIdle, &keep_idle).unwrap();
+                            println!("connect from peer {:?}", get_peer_name(connfd as RawFd));
 
                             // TCP 스트림 핸들러 연동 스레드 호출
-                            thread::spawn(move || handle_stream(epfd, stream_fd));
+                            thread::spawn(move || bind_socket(epfd, connfd));
                         }
                         _ => {}
                     }
@@ -103,7 +102,7 @@ fn main() {
 ///
 /// TCP 스트림 Epoll 파일 디스크립터 관심 목록 등록 핸들러
 ///
-fn handle_stream(_epfd: RawFd, _sockfd: RawFd) -> () {
+fn bind_socket(_epfd: RawFd, _sockfd: RawFd) -> () {
     let mut event = EpollEvent::new(
         EpollFlags::EPOLLIN | EpollFlags::EPOLLET | EpollFlags::EPOLLRDHUP,
         _sockfd as u64,
@@ -114,52 +113,56 @@ fn handle_stream(_epfd: RawFd, _sockfd: RawFd) -> () {
 ///
 /// Epoll 루프 핸들러
 ///
-fn handle_epoll(_epfd: RawFd) -> () {
+fn handle_epoll(epfd: RawFd) -> () {
     let mut events = [EpollEvent::empty(); EPOLL_HANDLER_EVENT_COUNT];
     let epoll_handler_timeout = dotenv::var("EPOLL_HANDLER_TIMEOUT")
         .unwrap()
         .parse::<isize>()
         .unwrap_or(100);
     loop {
-        match epoll_wait(_epfd, &mut events, epoll_handler_timeout) {
+        match epoll_wait(epfd, &mut events, epoll_handler_timeout) {
             Ok(size) => {
-                for _i in 0..size {
-                    match (events[_i].data(), events[_i].events()) {
-                        (_fd, _ev) if _ev == EpollFlags::EPOLLIN => {
+                for i in 0..size {
+                    match (events[i].data(), events[i].events()) {
+                        (fd, ev) if ev == EpollFlags::EPOLLIN => {
                             // 패킷 입력 처리
                             let mut buf = [0; PACKET_LENGTH];
-                            match read(_fd as RawFd, &mut buf) {
+                            match read(fd as RawFd, &mut buf) {
                                 Ok(size) if size > 0 => {
                                     println!(
                                         "packet received from peer: {:?}, packet: {}",
-                                        getpeername::<SockaddrIn>(_fd as RawFd)
-                                            .unwrap()
-                                            .to_string(),
+                                        get_peer_name(fd as RawFd),
                                         String::from_utf8_lossy(&buf)
                                     );
                                 }
                                 Ok(_) => {}
                                 Err(error) => {
-                                    eprintln!("read error: {:?}", error);
+                                    eprintln!(
+                                        "read error from peer: {:?}, {:?}",
+                                        get_peer_name(fd as RawFd),
+                                        error
+                                    );
                                 }
                             }
                         }
-                        (_fd, _ev) if _ev == EpollFlags::EPOLLRDHUP | EpollFlags::EPOLLIN => {
+                        (fd, ev) if ev == EpollFlags::EPOLLRDHUP | EpollFlags::EPOLLIN => {
                             // 접속 해제 처리
-                            println!(
-                                "disconnected from peer {:?}",
-                                getpeername::<SockaddrIn>(_fd as RawFd).unwrap().to_string()
-                            );
+                            println!("disconnected from peer {:?}", get_peer_name(fd as RawFd));
                             let mut event = EpollEvent::new(
                                 EpollFlags::EPOLLET | EpollFlags::EPOLLIN | EpollFlags::EPOLLRDHUP,
-                                _fd,
+                                fd,
                             );
-                            epoll_ctl(_epfd, EpollOp::EpollCtlDel, _fd as RawFd, &mut event)
-                                .unwrap();
-                            close(_fd as RawFd).unwrap();
+                            epoll_ctl(epfd, EpollOp::EpollCtlDel, fd as RawFd, &mut event).unwrap();
+                            close(fd as RawFd).unwrap();
                         }
-                        (_fd, _ev) => {
-                            println!("{:?}", _ev);
+                        (fd, ev) => {
+                            println!("epoll_handler(): {:?}", ev);
+                            let mut event = EpollEvent::new(
+                                EpollFlags::EPOLLET | EpollFlags::EPOLLIN | EpollFlags::EPOLLRDHUP,
+                                fd,
+                            );
+                            epoll_ctl(epfd, EpollOp::EpollCtlDel, fd as RawFd, &mut event).unwrap();
+                            close(fd as RawFd).unwrap();
                         }
                     }
                 }
@@ -168,5 +171,15 @@ fn handle_epoll(_epfd: RawFd) -> () {
                 eprintln!("handle_epoll wait error: {:?}", error);
             }
         }
+    }
+}
+
+///
+/// 소켓 파일디스크립터의 peer 정보를 반환
+///
+fn get_peer_name(sockfd: RawFd) -> String {
+    match getpeername::<SockaddrIn>(sockfd) {
+        Ok(addr) => addr.to_string(),
+        Err(_) => String::from("Unknown"),
     }
 }
