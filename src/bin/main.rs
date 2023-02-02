@@ -24,11 +24,21 @@ lazy_static! {
         .parse::<usize>()
         .unwrap_or(4);
 
+    /// 소켓 바인딩 IP
+    static ref IP_ADDR: String = dotenv::var("IP_ADDR").unwrap();
+    /// 소켓 바인딩 포트
+    static ref PORT: String = dotenv::var("PORT").unwrap();
+
     /// 패킷 버퍼 길이
     static ref PACKET_LENGTH: usize = dotenv::var("PACKET_LENGTH")
         .unwrap()
         .parse::<usize>()
         .unwrap_or(1_024);
+
+    /// 소켓 바인딩 Epoll 타임아웃
+    static ref EPOLL_BINDER_TIMEOUT: isize = dotenv::var("EPOLL_BINDER_TIMEOUT").unwrap().parse::<isize>().unwrap_or(1_000);
+    /// 소켓 핸들링 Epoll 타임아웃
+    static ref EPOLL_HANDLER_TIMEOUT: isize = dotenv::var("EPOLL_HANDLER_TIMEOUT").unwrap().parse::<isize>().unwrap_or(100);
 
     /// 소켓 바인딩 Epoll 파일 디스크립터 이벤트 처리 수
     static ref EPOLL_BINDER_EVENT_COUNT: usize = dotenv::var("EPOLL_BINDER_EVENT_COUNT")
@@ -40,6 +50,9 @@ lazy_static! {
         .unwrap()
         .parse::<usize>()
         .unwrap_or(1_024);
+
+    /// 소켓 Idle 타임아웃(초)
+    static ref SOCKET_IDLE_TIMEOUT_SEC: u32 = dotenv::var("SOCKET_IDLE_TIMEOUT_SEC").unwrap().parse::<u32>().unwrap_or(30);
 }
 
 ///
@@ -59,9 +72,7 @@ fn main() {
     }
 
     // TCP 소켓 리스너 생성
-    let ip = dotenv::var("IP_ADDR").unwrap();
-    let port = dotenv::var("PORT").unwrap();
-    let listener = TcpListener::bind(format!("{}:{}", ip, port)).unwrap();
+    let listener = TcpListener::bind(format!("{}:{}", *IP_ADDR, *PORT)).unwrap();
     listener.set_nonblocking(true).unwrap(); // 논블로킹 소켓 설정 활성화
 
     // TCP 소켓 핸들링 Epoll 파일 디스크립터 생성(UNIX)
@@ -74,12 +85,8 @@ fn main() {
 
     // TCP 소켓 리스너 Epoll 루프 동작(UNIX)
     let mut events = vec![EpollEvent::empty(); *EPOLL_BINDER_EVENT_COUNT];
-    let epoll_binder_timeout = dotenv::var("EPOLL_BINDER_TIMEOUT")
-        .unwrap()
-        .parse::<isize>()
-        .unwrap_or(1_000);
     loop {
-        match epoll_wait(epfd, &mut events, epoll_binder_timeout) {
+        match epoll_wait(epfd, &mut events, *EPOLL_BINDER_TIMEOUT) {
             Ok(size) => {
                 for i in 0..size {
                     match (events[i].data(), events[i].events()) {
@@ -95,7 +102,7 @@ fn main() {
                             // TCP Keep-alive 소켓 설정 활성화
                             let keep_alive = true;
                             setsockopt(connfd, sockopt::KeepAlive, &keep_alive).unwrap();
-                            let keep_idle = 10;
+                            let keep_idle = *SOCKET_IDLE_TIMEOUT_SEC;
                             setsockopt(connfd, sockopt::TcpKeepIdle, &keep_idle).unwrap();
                             println!("connect from peer {:?}", get_peer_name(connfd as RawFd));
 
@@ -129,12 +136,8 @@ fn bind_socket(_epfd: RawFd, _sockfd: RawFd) -> () {
 ///
 fn handle_epoll(epfd: RawFd) -> () {
     let mut events = vec![EpollEvent::empty(); *EPOLL_HANDLER_EVENT_COUNT];
-    let epoll_handler_timeout = dotenv::var("EPOLL_HANDLER_TIMEOUT")
-        .unwrap()
-        .parse::<isize>()
-        .unwrap_or(100);
     loop {
-        match epoll_wait(epfd, &mut events, epoll_handler_timeout) {
+        match epoll_wait(epfd, &mut events, *EPOLL_HANDLER_TIMEOUT) {
             Ok(size) => {
                 for i in 0..size {
                     match (events[i].data(), events[i].events()) {
