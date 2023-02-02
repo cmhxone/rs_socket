@@ -6,9 +6,13 @@ use std::{
 
 use lazy_static::lazy_static;
 use nix::{
+    libc::linger,
     sys::{
         epoll::{epoll_create, epoll_ctl, epoll_wait, EpollEvent, EpollFlags, EpollOp},
-        socket::{accept, setsockopt, sockopt},
+        socket::{
+            accept, setsockopt,
+            sockopt::{self},
+        },
     },
     unistd::{close, read},
 };
@@ -74,6 +78,13 @@ fn main() {
     // TCP 소켓 리스너 생성
     let listener = TcpListener::bind(format!("{}:{}", *IP_ADDR, *PORT)).unwrap();
     listener.set_nonblocking(true).unwrap(); // 논블로킹 소켓 설정 활성화
+
+    // Linger 소켓 설정 활성화
+    let linger = linger {
+        l_onoff: 1,
+        l_linger: *SOCKET_IDLE_TIMEOUT_SEC as i32,
+    };
+    setsockopt(listener.as_raw_fd(), sockopt::Linger, &linger).unwrap();
 
     // TCP 소켓 핸들링 Epoll 파일 디스크립터 생성(UNIX)
     let epfd = epoll_create().unwrap();
