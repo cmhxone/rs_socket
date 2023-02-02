@@ -123,12 +123,12 @@ fn main() {
 ///
 /// TCP 스트림 Epoll 파일 디스크립터 관심 목록 등록 핸들러
 ///
-fn bind_socket(_epfd: RawFd, _sockfd: RawFd) -> () {
+fn bind_socket(epfd: RawFd, sockfd: RawFd) -> () {
     let mut event = EpollEvent::new(
         EpollFlags::EPOLLIN | EpollFlags::EPOLLET | EpollFlags::EPOLLRDHUP,
-        _sockfd as u64,
+        sockfd as u64,
     );
-    epoll_ctl(_epfd, EpollOp::EpollCtlAdd, _sockfd.as_raw_fd(), &mut event).unwrap();
+    epoll_ctl(epfd, EpollOp::EpollCtlAdd, sockfd.as_raw_fd(), &mut event).unwrap();
 }
 
 ///
