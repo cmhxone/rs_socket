@@ -6,16 +6,28 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S%.3f %Z)(local)} {h({l})} thread-{T}-{I} {M}:{L} - {m}{n}"
 
-  # file:
-  #   kind: file
-  #   path: "log/requests.log"
-  #   encoder:
-  #     pattern: "{d} - {m}{n}"
+  file:
+    kind: rolling_file
+    path: "log/rs_socket.log"
+    append: true
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S%.3f %Z)(local)} {h({l})} thread-{T}-{I} {M}:{L} - {m}{n}"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 100mb
+      roller:
+        kind: fixed_window
+        pattern: "log/rs_socket.{}.log"
+        count: 10
+        base: 1
 
 root:
   level: info
   appenders:
     - stdout
+    - file
 
 # loggers:
 #   app::requests:
