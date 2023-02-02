@@ -5,6 +5,7 @@ use std::{
 };
 
 use lazy_static::lazy_static;
+use log::{info, warn, error};
 use nix::{
     libc::linger,
     sys::{
@@ -64,6 +65,7 @@ lazy_static! {
 ///
 fn main() {
     dotenv::dotenv().unwrap();
+    log4rs::init_file("log4rs.yml", Default::default()).unwrap();
 
     let pool = ThreadPool::new(*POOL_SIZE);
 
@@ -115,7 +117,7 @@ fn main() {
                             setsockopt(connfd, sockopt::KeepAlive, &keep_alive).unwrap();
                             let keep_idle = *SOCKET_IDLE_TIMEOUT_SEC;
                             setsockopt(connfd, sockopt::TcpKeepIdle, &keep_idle).unwrap();
-                            println!("connect from peer {:?}", get_peer_name(connfd as RawFd));
+                            info!("connect from peer {:?}", get_peer_name(connfd as RawFd));
 
                             // TCP 스트림 핸들러 연동 스레드 호출
                             thread::spawn(move || bind_socket(epfd, connfd));
@@ -125,7 +127,7 @@ fn main() {
                 }
             }
             Err(error) => {
-                eprintln!("main epoll wait error: {:?}", error);
+                error!("main epoll wait error: {:?}", error);
             }
         }
     }
@@ -157,7 +159,7 @@ fn handle_epoll(epfd: RawFd) -> () {
                             let mut buf = vec![0; *PACKET_LENGTH];
                             match read(fd as RawFd, &mut buf) {
                                 Ok(size) if size > 0 => {
-                                    println!(
+                                    info!(
                                         "packet received from peer: {:?}, packet: {}",
                                         get_peer_name(fd as RawFd),
                                         String::from_utf8_lossy(&buf)
@@ -165,7 +167,7 @@ fn handle_epoll(epfd: RawFd) -> () {
                                 }
                                 Ok(_) => {}
                                 Err(error) => {
-                                    eprintln!(
+                                    warn!(
                                         "read error from peer: {:?}, {:?}",
                                         get_peer_name(fd as RawFd),
                                         error
@@ -175,7 +177,7 @@ fn handle_epoll(epfd: RawFd) -> () {
                         }
                         (fd, ev) if ev == EpollFlags::EPOLLRDHUP | EpollFlags::EPOLLIN => {
                             // 접속 해제 처리
-                            println!("disconnected from peer {:?}", get_peer_name(fd as RawFd));
+                            info!("disconnected from peer {:?}", get_peer_name(fd as RawFd));
                             let mut event = EpollEvent::new(
                                 EpollFlags::EPOLLET | EpollFlags::EPOLLIN | EpollFlags::EPOLLRDHUP,
                                 fd,
@@ -184,7 +186,7 @@ fn handle_epoll(epfd: RawFd) -> () {
                             close(fd as RawFd).unwrap();
                         }
                         (fd, ev) => {
-                            println!("epoll_handler(): {:?}", ev);
+                            info!("epoll_handler(): {:?}", ev);
                             let mut event = EpollEvent::new(
                                 EpollFlags::EPOLLET | EpollFlags::EPOLLIN | EpollFlags::EPOLLRDHUP,
                                 fd,
@@ -196,7 +198,7 @@ fn handle_epoll(epfd: RawFd) -> () {
                 }
             }
             Err(error) => {
-                eprintln!("handle_epoll wait error: {:?}", error);
+                error!("handle_epoll wait error: {:?}", error);
             }
         }
     }

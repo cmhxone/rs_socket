@@ -1,0 +1,25 @@
+refresh_rate: 30 seconds
+
+appenders:
+  stdout:
+    kind: console
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S%.3f %Z)(local)} {h({l})} thread-{T}-{I} {M}:{L} - {m}{n}"
+
+  # file:
+  #   kind: file
+  #   path: "log/requests.log"
+  #   encoder:
+  #     pattern: "{d} - {m}{n}"
+
+root:
+  level: info
+  appenders:
+    - stdout
+
+# loggers:
+#   app::requests:
+#     level: info
+#     appenders:
+#       - file
+#     additive: false
