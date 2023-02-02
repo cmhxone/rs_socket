@@ -82,7 +82,6 @@ fn main() {
                             // TCP Keep-alive 소켓 설정 활성화
                             let keep_alive = true;
                             setsockopt(connfd, sockopt::KeepAlive, &keep_alive).unwrap();
-
                             let keep_idle = 10;
                             setsockopt(connfd, sockopt::TcpKeepIdle, &keep_idle).unwrap();
                             println!("connect from peer {:?}", get_peer_name(connfd as RawFd));
