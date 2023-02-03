@@ -179,6 +179,12 @@ fn handle_epoll(epfd: RawFd) -> () {
                             epoll_ctl(epfd, EpollOp::EpollCtlDel, fd as RawFd, &mut event).unwrap();
                             close(fd as RawFd).unwrap();
                         }
+                        (fd, ev) if ev == EpollFlags::EPOLLIN | EpollFlags::EPOLLERR | EpollFlags::EPOLLHUP | EpollFlags::EPOLLRDHUP => {
+                            // 비정상 종료 접속 해제 처리
+                            info!("unexpected disconnection occured from peer {:?}", get_peer_name(fd as RawFd));
+                            let mut event = EpollEvent::new(epoll_monitor_event(), fd);
+                            epoll_ctl(epfd, EpollOp::EpollCtlDel, fd as RawFd, &mut event).unwrap();
+                        }
                         (fd, ev) => {
                             info!("epoll_handler(): {:?}", ev);
                             let mut event = EpollEvent::new(epoll_monitor_event(), fd);
