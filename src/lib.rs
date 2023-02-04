@@ -25,8 +25,7 @@ pub mod socket {
     /// Epoll 소켓 파일디스크립터 관심 대상 해제
     /// 
     pub fn remove_epoll_list(epfd: RawFd, sockfd: RawFd) -> Result<(), nix::errno::Errno> {
-        let mut event = EpollEvent::new(epoll_monitor_event(), sockfd as u64);
-        match epoll_ctl(epfd, EpollOp::EpollCtlDel, sockfd as RawFd, &mut event) {
+        match epoll_ctl(epfd, EpollOp::EpollCtlDel, sockfd as RawFd, &mut EpollEvent::empty()) {
             Ok(_) => {
                 close(sockfd as RawFd)
             }
