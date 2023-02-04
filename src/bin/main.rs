@@ -18,9 +18,8 @@ use nix::{
     unistd::read,
 };
 
+use rs_socket::socket::epoll::{add_epoll_list, get_peer_name, remove_epoll_list};
 use threadpool::ThreadPool;
-
-use rs_socket::socket::{add_epoll_list, get_peer_name, remove_epoll_list};
 
 lazy_static! {
     /// 스레드 풀 최대 스레드 수
