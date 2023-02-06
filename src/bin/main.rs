@@ -165,6 +165,7 @@ fn handle_epoll(epfd: RawFd) -> () {
                                         get_peer_name(fd as RawFd),
                                         error
                                     );
+                                    remove_epoll_list(epfd, fd as RawFd).unwrap();
                                 }
                             }
                         }
