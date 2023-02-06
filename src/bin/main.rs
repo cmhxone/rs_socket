@@ -18,7 +18,10 @@ use nix::{
     unistd::read,
 };
 
-use rs_socket::socket::epoll::{add_epoll_list, get_peer_name, remove_epoll_list};
+use rs_socket::socket::{
+    epoll::{add_epoll_list, remove_epoll_list},
+    get_peer_name,
+};
 use threadpool::ThreadPool;
 
 lazy_static! {
