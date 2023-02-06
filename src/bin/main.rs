@@ -155,11 +155,7 @@ fn handle_epoll(epfd: RawFd) -> () {
                             let mut buf = vec![0; *PACKET_LENGTH];
                             match read(fd as RawFd, &mut buf) {
                                 Ok(size) if size > 0 => {
-                                    info!(
-                                        "packet received from peer: {:?}, packet: {}",
-                                        get_peer_name(fd as RawFd),
-                                        String::from_utf8_lossy(&buf)
-                                    );
+                                    handle_packet(fd as RawFd, buf);
                                 }
                                 Ok(_) => {}
                                 Err(error) => {
@@ -203,4 +199,15 @@ fn handle_epoll(epfd: RawFd) -> () {
             }
         }
     }
+}
+
+///
+/// TCP 패킷 핸들러
+/// 
+fn handle_packet(fd: RawFd, buf: Vec<u8>) {
+    info!(
+        "packet received from peer: {:?}, packet: {}",
+        get_peer_name(fd as RawFd),
+        String::from_utf8_lossy(&buf).trim()
+    );
 }
