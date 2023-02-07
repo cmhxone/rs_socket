@@ -3,6 +3,7 @@ use std::os::fd::RawFd;
 use nix::sys::socket::{getpeername, SockaddrIn};
 
 pub mod epoll;
+pub mod packet;
 
 ///
 /// 소켓 파일디스크립터의 peer 정보를 반환

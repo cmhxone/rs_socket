@@ -20,7 +20,7 @@ use nix::{
 
 use rs_socket::socket::{
     epoll::{add_epoll_list, remove_epoll_list},
-    get_peer_name,
+    get_peer_name, packet::handle_packet,
 };
 use threadpool::ThreadPool;
 
@@ -199,15 +199,4 @@ fn handle_epoll(epfd: RawFd) -> () {
             }
         }
     }
-}
-
-///
-/// TCP 패킷 핸들러
-/// 
-fn handle_packet(fd: RawFd, buf: Vec<u8>) {
-    info!(
-        "packet received from peer: {:?}, packet: {}",
-        get_peer_name(fd as RawFd),
-        String::from_utf8_lossy(&buf).trim()
-    );
 }
